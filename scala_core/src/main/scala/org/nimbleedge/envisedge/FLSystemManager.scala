@@ -51,7 +51,8 @@ object FLSystemManager {
 
     // Start cycle
     // TODO
-    final case class StartCycle(requestId: Long, replyTo: ActorRef[RespondModel]) extends FLSystemManager.Command
+    // final case class StartCycle(requestId: Long, replyTo: ActorRef[RespondModel]) extends FLSystemManager.Command with Orchestrator.Command with Aggregator.Command
+    final case class StartCycle(requestId : Long) extends FLSystemManager.Command with Orchestrator.Command with Aggregator.Command
     final case class RespondModel(requestId: Long)
 
     // TODO
@@ -116,8 +117,11 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
                 }
                 this
             
-            case StartCycle(requestId, replyTo) =>
+            case startCycle @ StartCycle(_) =>
                 // TODO
+                println("Start Cycle Message Received -> FL System Manager")
+                println(orcIdToRef)
+                orcIdToRef.values.foreach((o) => o ! startCycle)
                 this
             
             case OrchestratorTerminated(actor, orcId) =>

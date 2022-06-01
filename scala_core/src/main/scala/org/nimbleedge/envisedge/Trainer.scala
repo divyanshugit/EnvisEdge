@@ -30,7 +30,21 @@ class Trainer(context: ActorContext[Trainer.Command], traId: TrainerIdentifier) 
     override def onMessage(msg: Command): Behavior[Command] =
         msg match {
             // TODO
-            case _ =>
+            case JobResponse(message) => 
+                if (message == "Timeout") {
+                    context.log.info("Trainer Helper {} timeout.", traId.name())
+                } else {
+                    // here json object is converted to respective case class object
+                    // to be used for further processing in scala
+                    val response = JsonDecoder.deserialize(message)
+
+                    // TODO
+                    // Further processing with reponse
+                }
+                this
+
+            case HelperTerminated(_) => 
+                context.log.info("Trainer {} Helper has been terminated", traId.name())
                 this
         }
     

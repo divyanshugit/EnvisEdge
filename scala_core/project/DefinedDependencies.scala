@@ -3,13 +3,14 @@ import sbt._
 object DefinedDependencies {
 
   private object Versions {
-    val akka            = "2.6.18"
+    val akka            = "2.6.19"
     val scalatest       = "3.2.10"
     val logbackClassic  = "1.2.10"
     val kafka           = "3.2.0"
     val jackson_core    = "2.12.1"
     val jackson_module  = "2.12.3"
     val circe           = "0.14.1"
+    val redis           = "3.41"
   }
 
   object Akka {
@@ -42,6 +43,10 @@ object DefinedDependencies {
     val circe_core = "io.circe" %% "circe-core" % Versions.circe
     val circe_generic = "io.circe" %% "circe-generic" % Versions.circe
     val circe_parser = "io.circe" %% "circe-parser" % Versions.circe
+  }
+
+  object Redis {
+    val client = "net.debasishg" %% "redisclient" % Versions.redis
   }
 
 }

@@ -5,6 +5,8 @@ import messages._
 import scala.concurrent.duration._
 import scala.collection.mutable.{Map => MutableMap}
 
+import akka.actor.Actor
+import akka.actor.Cancellable
 import akka.actor.typed.ActorRef
 import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.Behaviors
@@ -14,8 +16,8 @@ import akka.actor.typed.Signal
 import akka.actor.typed.PostStop
 
 object Aggregator {
-    def apply(aggId: AggregatorIdentifier): Behavior[Command] =
-        Behaviors.setup(new Aggregator(_, aggId))
+    def apply(aggId: AggregatorIdentifier, parent: ActorRef[Orchestrator.Command]): Behavior[Command] =
+        Behaviors.setup(new Aggregator(_, aggId, parent))
     
     trait Command
 
@@ -26,16 +28,22 @@ object Aggregator {
     private final case class TrainerTerminated(actor: ActorRef[Trainer.Command], traId: TrainerIdentifier)
         extends Aggregator.Command
 
-    
+    final case class InitiateSampling() extends Aggregator.Command
+
+    final case class SamplingFinished() extends Aggregator.Command
+
+    final case class CheckS3ForModels() extends Aggregator.Command
+
     // TODO
     // Add messages here
 }
 
-class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIdentifier) extends AbstractBehavior[Aggregator.Command](context) {
+// TODO: parent should be either of orchestrator or aggregator.
+class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIdentifier, parent: ActorRef[Orchestrator.Command]) extends AbstractBehavior[Aggregator.Command](context) {
     import Aggregator._
-    import Orchestrator.JobSubmit
     import FLSystemManager.StartCycle
     import FLSystemManager.{ RequestTrainer, TrainerRegistered, RequestAggregator, AggregatorRegistered, RequestRealTimeGraph }
+
 
     // TODO
     // Add state and persistent information
@@ -69,7 +77,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIde
                 actorRef
             case None =>
                 context.log.info("Creating new Aggregator actor for {}", aggregatorId.toString())
-                val actorRef = context.spawn(Aggregator(aggregatorId), s"aggregator-${aggregatorId.name()}")
+                val actorRef = context.spawn(Aggregator(aggregatorId, parent), s"aggregator-${aggregatorId.name()}")
                 context.watchWith(actorRef, AggregatorTerminated(actorRef, aggregatorId))
                 aggregatorIdsToRef += aggregatorId -> actorRef
                 actorRef
@@ -100,18 +108,18 @@ class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIde
         return trainerHistoryToRef
     }
 
-    def makeSamplingJobSubmit() : SamplingJobSubmit = {
+    def makeSamplingJobSubmit(clientList: List[String]) : SamplingJobSubmit = {
         println("In make Sampling message")
         println(trainerIdsToRef)
         var sampling_message = SamplingJobSubmit(
             basic_info = JobSubmitBasic(
                 __type__ = "sampling",
                 job_type = "sampling-jobsubmit",
-                sender_id = "sender-id",
-                receiver_id = "receiver-id"
+                sender_id = aggId.toString(),
+                receiver_id = aggId.toString()
             ),
-            trainerList = trainerIdsToRef,
-            trainerHistory = getTrainerHistory()
+            trainerList = clientList,
+            trainerHistory = MutableMap.empty
         )
 
         return sampling_message
@@ -162,7 +170,40 @@ class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIde
                         }
                     }
                 }
-                this    
+                this
+
+            case trackMsg @ InitiateSampling() =>
+                context.log.info("Aggregator Id:{} Initiate Sampling", aggId.toString())
+                // fetch list of clientIds from the Redis
+                val clientList = RedisClientHelper.getList(aggId.toString()).toList.flatten.flatten
+
+                // TODO create the Job and submit to the python service
+                // Make Sampling Job Submit Message here
+                val sampling_message = makeSamplingJobSubmit(clientList)
+                context.log.info("Aggregator Id:{} Sampling Message: {}", aggId.toString(), sampling_message)
+                // Convert Message to Json String to send via kafka
+                val serializedMsg = JsonEncoder.serialize(sampling_message)
+                // TODO Send job to Python Service using Kafka
+                
+                this
+            
+            case trackMsg @ SamplingFinished() =>
+                context.log.info("Aggregator ID:{} Sampling Completed", aggId.toString())
+                // update the list of devies on redis
+                parent ! Orchestrator.SamplingCheckpoint(aggId)
+
+                //timer = context.system.scheduler.scheduleAtFixedRate(10.millisecond, 500.millis, context.self, CheckS3ForModels)
+                this
+
+            case trackMsg @ CheckS3ForModels() =>
+                // Connect to S3, and ask for models
+                context.log.info("Aggregator ID:{} CheckS3ForModels", aggId.toString())
+                val modelsRecived: Boolean = false
+
+                if (modelsRecived) {
+                    //timer.cancel()
+                }
+                this
             
             case trackMsg @ RequestRealTimeGraph(requestId, entity, replyTo) =>
                 entity match {
@@ -204,26 +245,6 @@ class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIde
             case TrainerTerminated(actor, traId) =>
                 context.log.info("Trainer with id {} has been terminated", traId.toString())
                 // TODO
-                this
-            
-            case jobMsg @ JobSubmit(_) => 
-                aggregatorIdsToRef.values.foreach((a) => a ! jobMsg)
-                trainerIdsToRef.values.foreach((a) => a ! jobMsg)
-                this
-            
-            case startCycle @ StartCycle(_) => 
-                aggregatorIdsToRef.values.foreach((a) => a ! startCycle)
-                println("Start Cycle Message Received -> Aggregator")
-
-                // Make Sampling Job Submit Message here
-                var sampling_message = makeSamplingJobSubmit()
-                println(sampling_message)
-                // Convert Message to Json String to send via kafka
-                val job = JsonEncoder.serialize(sampling_message)
-                // Send job to all trainers
-                trainerIdsToRef.values.foreach((t) => 
-                    t ! JobSubmit(job)
-                )
                 this
         }
     

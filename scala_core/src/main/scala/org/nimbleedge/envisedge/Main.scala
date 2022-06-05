@@ -94,6 +94,27 @@ object Main {
         // println(t22.toList())
 
         // println(a2.getChildren())
-        ActorSystem(HostServer(), "host-server")
+        //ActorSystem(HostServer(), "host-server")
+
+        RedisClientHelper.initConnection()
+        RedisClientHelper.set("firstKey", "FirstValue")
+        RedisClientHelper.set("secondKey", "SecondValue")
+
+        println(RedisClientHelper.get("firstKey"))
+        println(RedisClientHelper.get("secondKey"))
+
+        val map = Map("name" -> "Android", "clientId" -> "client-1", "aggId" -> "agg-1", "orcId" -> "orc-1")
+        val map2 = Map("name" -> "IOS", "clientId" -> "client-2", "aggId" -> "agg-1", "orcId" -> "orc-1")
+        RedisClientHelper.hmset("device-1", map)
+        RedisClientHelper.hmset("device-2", map2)
+
+        RedisClientHelper.lpush("agg-1", "client-1")
+        RedisClientHelper.rpush("agg-1", "client-2")
+
+        println(RedisClientHelper.getList("agg-1").toList.flatten.flatten)
+
+        println(RedisClientHelper.hmget("device-1", "name", "clientId", "aggId", "orcId"))
+
+        ///RedisClientHelper.flushdb()
     }
 }

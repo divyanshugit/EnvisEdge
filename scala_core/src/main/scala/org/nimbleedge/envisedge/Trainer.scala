@@ -27,7 +27,8 @@ class Trainer(context: ActorContext[Trainer.Command], traId: TrainerIdentifier) 
 
     context.log.info("Trainer {} started", traId.toString())
 
-    override def onMessage(msg: Command): Behavior[Command] =
+    override def onMessage(msg: Command): Behavior[Command] = {this}
+        /*
         msg match {
             // TODO
             case JobResponse(message) => 
@@ -47,6 +48,7 @@ class Trainer(context: ActorContext[Trainer.Command], traId: TrainerIdentifier) 
                 context.log.info("Trainer {} Helper has been terminated", traId.name())
                 this
         }
+        */
     
     override def onSignal: PartialFunction[Signal,Behavior[Command]] = {
         case PostStop =>

@@ -27,6 +27,8 @@ object FLSystemManager {
         extends FLSystemManager.Command
         with Orchestrator.Command
         with Aggregator.Command
+
+    final case class DeviceRegistered() extends FLSystemManager.Command
     
     final case class AggregatorRegistered(requestId: Long, actor: ActorRef[Aggregator.Command])
 
@@ -66,6 +68,9 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
     // Topology ??
     // State Information
     var orcIdToRef : MutableMap[OrchestratorIdentifier, ActorRef[Orchestrator.Command]] = MutableMap.empty
+
+    // TODO insert host, port from config
+    RedisClientHelper.initConnection()
 
     context.log.info("FLSystemManager Started")
 
@@ -115,6 +120,9 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
                     case None =>
                         context.log.info("Orchestrator with id {} does not exist, can't request realTimeGraph", orcId.name())
                 }
+                this
+
+            case DeviceRegistered() =>
                 this
             
             case startCycle @ StartCycle(_) =>

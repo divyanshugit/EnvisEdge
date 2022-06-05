@@ -8,6 +8,6 @@ import org.nimbleedge.envisedge._
 final case class SamplingJobSubmit (
 
     basic_info : JobSubmitBasic,
-    trainerList : MutableMap[TrainerIdentifier, ActorRef[Trainer.Command]],
-    trainerHistory : MutableMap[TrainerIdentifier,TrainerHistory]
+    trainerList : List[String],
+    trainerHistory : MutableMap[String,TrainerHistory]
 )

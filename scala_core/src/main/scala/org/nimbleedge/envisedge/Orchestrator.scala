@@ -24,6 +24,10 @@ object Orchestrator {
   private final case class AggregatorTerminated(actor: ActorRef[Aggregator.Command], aggId: AggregatorIdentifier)
     extends Orchestrator.Command
 
+  final case class RegisterDevice(device: String, replyTo: ActorRef[FLSystemManager.Command]) extends Orchestrator.Command
+
+  final case class SamplingCheckpoint(aggId: AggregatorIdentifier) extends Orchestrator.Command
+
   // TODO
   // Add messages here
 }
@@ -35,6 +39,11 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
   // TODO
   // Add state and persistent information
   var aggIdToRef : MutableMap[AggregatorIdentifier, ActorRef[Aggregator.Command]] = MutableMap.empty
+  var aggIdToClientCount : MutableMap[AggregatorIdentifier, Int] = MutableMap.empty
+
+  //TODO fetch from config
+  val maxClientsInAgg : Int = 2000
+
   context.log.info("Orchestrator {} started", orcId.name())
   
   private def getAggregatorRef(aggId: AggregatorIdentifier): ActorRef[Aggregator.Command] = {
@@ -43,10 +52,35 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
             actorRef
         case None =>
             context.log.info("Creating new aggregator actor for {}", aggId.name())
-            val actorRef = context.spawn(Aggregator(aggId), s"aggregator-${aggId.name()}")
+            val actorRef = context.spawn(Aggregator(aggId, context.self), s"aggregator-${aggId.name()}")
             context.watchWith(actorRef, AggregatorTerminated(actorRef, aggId))
             aggIdToRef += aggId -> actorRef
+            aggIdToClientCount += aggId -> 0
             actorRef
+    }
+  }
+
+  private def createAggregator() : AggregatorIdentifier = {
+    val aggCount = aggIdToRef.size
+    val aggIdStr = "A" + (aggCount + 1)
+    val aggId = AggregatorIdentifier(orcId, aggIdStr)
+
+    context.log.info("Creating new aggregator actor for {}", aggId.name())
+    val actorRef = context.spawn(Aggregator(aggId, context.self), s"aggregator-${aggId.name()}")
+    context.watchWith(actorRef, AggregatorTerminated(actorRef, aggId))
+    aggIdToRef += aggId -> actorRef
+    aggIdToClientCount += aggId -> 0
+
+    return  aggId
+  }
+
+  private def getAvailableAggregator() : AggregatorIdentifier = {
+    val filteredMap = aggIdToClientCount.filter(mapEntry => mapEntry._2 < maxClientsInAgg)
+    if (filteredMap.isEmpty) {
+      //create new agg
+      return createAggregator();
+    } else {
+      return filteredMap.head._1
     }
   }
 
@@ -102,16 +136,25 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
           }
         }
         this
+
+      case RegisterDevice(device, replyTo) =>
+        context.log.info("Orc id:{} device registration for device:{}", orcId.toString(), device)
+        val clientId = "client-" + device
+        val aggId = getAvailableAggregator()
+        //update this pair to the redis
+        val dataMap = Map("name" -> device, "clientId" -> clientId, "aggId" -> aggId.toString(), "orcId" -> orcId.toString())
+        RedisClientHelper.hmset(device, dataMap)
+        RedisClientHelper.rpush(aggId.toString(), clientId)
+
+        replyTo ! FLSystemManager.DeviceRegistered()
+        this
+
       
       case AggregatorTerminated(actor, aggId) =>
         context.log.info("Aggregator with id {} has been terminated", aggId.toString())
         // TODO
         this
 
-      case jobMsg @ JobSubmit(_) => 
-        aggIdToRef.values.foreach((a) => a ! jobMsg)
-        this
-      
       case startCycle @ StartCycle(_) =>
         aggIdToRef.values.foreach((a) => a ! startCycle)
         this

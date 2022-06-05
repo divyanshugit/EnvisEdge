@@ -14,10 +14,16 @@ import akka.actor.typed.scaladsl.ActorContext
 import akka.actor.typed.scaladsl.AbstractBehavior
 import akka.actor.typed.Signal
 import akka.actor.typed.PostStop
+import akka.actor.Timers
+import akka.actor.typed.scaladsl.TimerScheduler
 
 object Aggregator {
     def apply(aggId: AggregatorIdentifier, parent: ActorRef[Orchestrator.Command]): Behavior[Command] =
-        Behaviors.setup(new Aggregator(_, aggId, parent))
+        Behaviors.setup{context =>
+            Behaviors.withTimers { timers =>
+                new Aggregator(context, timers, aggId, parent)
+            }
+        }
     
     trait Command
 
@@ -28,18 +34,20 @@ object Aggregator {
     private final case class TrainerTerminated(actor: ActorRef[Trainer.Command], traId: TrainerIdentifier)
         extends Aggregator.Command
 
-    final case class InitiateSampling() extends Aggregator.Command
+    final case class InitiateSampling(samplingPolicy: String) extends Aggregator.Command
 
     final case class SamplingFinished() extends Aggregator.Command
 
     final case class CheckS3ForModels() extends Aggregator.Command
+
+    private case object TimerKey
 
     // TODO
     // Add messages here
 }
 
 // TODO: parent should be either of orchestrator or aggregator.
-class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIdentifier, parent: ActorRef[Orchestrator.Command]) extends AbstractBehavior[Aggregator.Command](context) {
+class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerScheduler[Aggregator.Command], aggId: AggregatorIdentifier, parent: ActorRef[Orchestrator.Command]) extends AbstractBehavior[Aggregator.Command](context) {
     import Aggregator._
     import FLSystemManager.StartCycle
     import FLSystemManager.{ RequestTrainer, TrainerRegistered, RequestAggregator, AggregatorRegistered, RequestRealTimeGraph }
@@ -172,7 +180,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIde
                 }
                 this
 
-            case trackMsg @ InitiateSampling() =>
+            case trackMsg @ InitiateSampling(samplingPolicy) =>
                 context.log.info("Aggregator Id:{} Initiate Sampling", aggId.toString())
                 // fetch list of clientIds from the Redis
                 val clientList = RedisClientHelper.getList(aggId.toString()).toList.flatten.flatten
@@ -189,10 +197,10 @@ class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIde
             
             case trackMsg @ SamplingFinished() =>
                 context.log.info("Aggregator ID:{} Sampling Completed", aggId.toString())
-                // update the list of devies on redis
+                // TODO update the list of devies on redis
                 parent ! Orchestrator.SamplingCheckpoint(aggId)
 
-                //timer = context.system.scheduler.scheduleAtFixedRate(10.millisecond, 500.millis, context.self, CheckS3ForModels)
+                timers.startSingleTimer(TimerKey, CheckS3ForModels(), ConfigManager.aggregatorS3ProbeIntervalSec.second)
                 this
 
             case trackMsg @ CheckS3ForModels() =>
@@ -201,7 +209,9 @@ class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIde
                 val modelsRecived: Boolean = false
 
                 if (modelsRecived) {
-                    //timer.cancel()
+                    timers.cancel()
+                } else {
+                    timers.startSingleTimer(TimerKey, CheckS3ForModels(), 500.milli)
                 }
                 this
             

@@ -38,7 +38,7 @@ class FLSystemManagerSpec extends ScalaTestWithActorTestKit with AnyWordSpecLike
     val t6 = TrainerIdentifier(a3, "T6")
 
 	"FLSystemManager actor" must {
-		"be able to register a trainer, orchestrator and aggregator" in {
+		"be able to register a trainer, orchestrator, aggregator, and devices" in {
 			val managerActor = spawn(FLSystemManager())
 
 			// Create Trainer Actors
@@ -84,6 +84,20 @@ class FLSystemManagerSpec extends ScalaTestWithActorTestKit with AnyWordSpecLike
 						Node(Right(a3), Set(
 							Leaf(t5)))))))
 			registered5.realTimeGraph should ===(expectedTree)
+
+			// create Device
+			val deviceRegsiterd = createTestProbe[DeviceRegistered]()
+
+			managerActor ! RegisterDevice("device-1", deviceRegsiterd.ref)
+			val registered6 = deviceRegsiterd.receiveMessage()
+			registered6.clientId should === ("client-device-1")
+
+			val timerProbe = createTestProbe[Aggregator.CheckS3ForModels]()
+			// check timer
+			aggActor1 ! Aggregator.SamplingFinished()
+			var msg = timerProbe.receiveMessage()
+
+
 
 			// TODO
 			// add more tests here

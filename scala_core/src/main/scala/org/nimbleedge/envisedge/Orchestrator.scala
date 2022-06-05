@@ -13,10 +13,11 @@ import akka.actor.typed.Signal
 import akka.actor.typed.PostStop
 
 import messages._
+import scala.collection.mutable
 
 object Orchestrator {
-  def apply(orcId: OrchestratorIdentifier): Behavior[Command] =
-    Behaviors.setup(new Orchestrator(_, orcId))
+  def apply(orcId: OrchestratorIdentifier, parent: ActorRef[FLSystemManager.Command]): Behavior[Command] =
+    Behaviors.setup(new Orchestrator(_, orcId, parent))
 
   trait Command
 
@@ -24,7 +25,7 @@ object Orchestrator {
   private final case class AggregatorTerminated(actor: ActorRef[Aggregator.Command], aggId: AggregatorIdentifier)
     extends Orchestrator.Command
 
-  final case class RegisterDevice(device: String, replyTo: ActorRef[FLSystemManager.Command]) extends Orchestrator.Command
+  final case class RegisterDevice(device: String, replyTo: ActorRef[FLSystemManager.DeviceRegistered]) extends Orchestrator.Command
 
   final case class SamplingCheckpoint(aggId: AggregatorIdentifier) extends Orchestrator.Command
 
@@ -32,7 +33,7 @@ object Orchestrator {
   // Add messages here
 }
 
-class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: OrchestratorIdentifier) extends AbstractBehavior[Orchestrator.Command](context) {
+class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: OrchestratorIdentifier, parent: ActorRef[FLSystemManager.Command]) extends AbstractBehavior[Orchestrator.Command](context) {
   import Orchestrator._
   import FLSystemManager.{ RequestAggregator, AggregatorRegistered, RequestTrainer, RequestRealTimeGraph, StartCycle}
 
@@ -41,22 +42,27 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
   var aggIdToRef : MutableMap[AggregatorIdentifier, ActorRef[Aggregator.Command]] = MutableMap.empty
   var aggIdToClientCount : MutableMap[AggregatorIdentifier, Int] = MutableMap.empty
 
-  //TODO fetch from config
-  val maxClientsInAgg : Int = 2000
+  var aggIdSamplingCompletedSet : mutable.Set[AggregatorIdentifier] = mutable.Set.empty
 
   context.log.info("Orchestrator {} started", orcId.name())
+
+  private def spawnAggregator(aggId : AggregatorIdentifier) : ActorRef[Aggregator.Command] = {
+    context.log.info("Creating new aggregator actor for {}", aggId.name())
+    val actorRef = context.spawn(Aggregator(aggId, context.self), s"aggregator-${aggId.name()}")
+    context.watchWith(actorRef, AggregatorTerminated(actorRef, aggId))
+    aggIdToRef += aggId -> actorRef
+    aggIdToClientCount += aggId -> 0
+
+    return actorRef
+  }
   
   private def getAggregatorRef(aggId: AggregatorIdentifier): ActorRef[Aggregator.Command] = {
     aggIdToRef.get(aggId) match {
         case Some(actorRef) =>
             actorRef
         case None =>
-            context.log.info("Creating new aggregator actor for {}", aggId.name())
-            val actorRef = context.spawn(Aggregator(aggId, context.self), s"aggregator-${aggId.name()}")
-            context.watchWith(actorRef, AggregatorTerminated(actorRef, aggId))
-            aggIdToRef += aggId -> actorRef
-            aggIdToClientCount += aggId -> 0
-            actorRef
+            val actorRef = spawnAggregator(aggId)
+            return actorRef
     }
   }
 
@@ -65,17 +71,13 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
     val aggIdStr = "A" + (aggCount + 1)
     val aggId = AggregatorIdentifier(orcId, aggIdStr)
 
-    context.log.info("Creating new aggregator actor for {}", aggId.name())
-    val actorRef = context.spawn(Aggregator(aggId, context.self), s"aggregator-${aggId.name()}")
-    context.watchWith(actorRef, AggregatorTerminated(actorRef, aggId))
-    aggIdToRef += aggId -> actorRef
-    aggIdToClientCount += aggId -> 0
+    val actorRef = spawnAggregator(aggId)
 
     return  aggId
   }
 
   private def getAvailableAggregator() : AggregatorIdentifier = {
-    val filteredMap = aggIdToClientCount.filter(mapEntry => mapEntry._2 < maxClientsInAgg)
+    val filteredMap = aggIdToClientCount.filter(mapEntry => mapEntry._2 < ConfigManager.maxClientsInAgg)
     if (filteredMap.isEmpty) {
       //create new agg
       return createAggregator();
@@ -88,7 +90,7 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
     msg match {
       case trackMsg @ RequestAggregator(requestId, aggId, replyTo) =>
         if (aggId.getOrchestrator() != orcId) {
-          context.log.info("Expected orchestrator id {}, found {}", orcId.name(), aggId.toString())
+          context.log.info("Expected orchestrator id {}, found {}", orcId.name(), aggId.name())
         } else {
           val actorRef = getAggregatorRef(aggId)
           replyTo ! AggregatorRegistered(requestId, actorRef)
@@ -138,15 +140,17 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
         this
 
       case RegisterDevice(device, replyTo) =>
-        context.log.info("Orc id:{} device registration for device:{}", orcId.toString(), device)
+        context.log.info("Orc id:{} device registration for device:{}", orcId.name(), device)
         val clientId = "client-" + device
         val aggId = getAvailableAggregator()
         //update this pair to the redis
-        val dataMap = Map("name" -> device, "clientId" -> clientId, "aggId" -> aggId.toString(), "orcId" -> orcId.toString())
+        val dataMap = Map("name" -> device, "clientId" -> clientId, "aggId" -> aggId.toString(), "orcId" -> orcId.name())
         RedisClientHelper.hmset(device, dataMap)
         RedisClientHelper.rpush(aggId.toString(), clientId)
 
-        replyTo ! FLSystemManager.DeviceRegistered()
+        aggIdToClientCount(aggId) += 1
+
+        replyTo ! FLSystemManager.DeviceRegistered(clientId)
         this
 
       
@@ -155,14 +159,25 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
         // TODO
         this
 
-      case startCycle @ StartCycle(_) =>
-        aggIdToRef.values.foreach((a) => a ! startCycle)
+      case StartCycle(_) =>
+        val aggMsg = Aggregator.InitiateSampling(ConfigManager.samplingPolicy)
+        aggIdToRef.values.foreach((a) => a ! aggMsg)
         this
+
+      case SamplingCheckpoint(aggId) =>
+        context.log.info("Orc id:{} Sampling Checkpoint for Agg:{}", orcId.name(), aggId.name())
+        aggIdSamplingCompletedSet += aggId
+        if (aggIdSamplingCompletedSet.size == orcId.getChildren().size) {
+          context.log.info("Orc id:{} Sampling Checkpoint Finished for all Aggs, sending next checkpoint to FLSystemManager", orcId.name())
+          parent ! FLSystemManager.SamplingCheckpoint(orcId)
+        }
+        this
+
     }
   
   override def onSignal: PartialFunction[Signal,Behavior[Command]] = {
     case PostStop =>
-      context.log.info("Orchestrator {} stopeed", orcId.toString())
+      context.log.info("Orchestrator {} stopeed", orcId.name())
       this
   }
 }

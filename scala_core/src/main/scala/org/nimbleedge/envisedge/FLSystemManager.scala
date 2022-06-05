@@ -1,7 +1,7 @@
 package org.nimbleedge.envisedge
 
 import models._
-import scala.collection.mutable.{Map => MutableMap}
+import scala.collection.mutable.{Map => MutableMap, ListBuffer}
 
 import akka.actor.typed.ActorRef
 import akka.actor.typed.Behavior
@@ -27,10 +27,11 @@ object FLSystemManager {
         extends FLSystemManager.Command
         with Orchestrator.Command
         with Aggregator.Command
-
-    final case class DeviceRegistered() extends FLSystemManager.Command
     
     final case class AggregatorRegistered(requestId: Long, actor: ActorRef[Aggregator.Command])
+
+    final case class RegisterDevice(deviceId: String, replyTo: ActorRef[DeviceRegistered]) extends FLSystemManager.Command
+    final case class DeviceRegistered(clientId: String)
 
     final case class RequestTrainer(requestId: Long, traId: TrainerIdentifier, replyTo: ActorRef[TrainerRegistered])
         extends FLSystemManager.Command
@@ -55,6 +56,7 @@ object FLSystemManager {
     // TODO
     // final case class StartCycle(requestId: Long, replyTo: ActorRef[RespondModel]) extends FLSystemManager.Command with Orchestrator.Command with Aggregator.Command
     final case class StartCycle(requestId : Long) extends FLSystemManager.Command with Orchestrator.Command with Aggregator.Command
+    final case class SamplingCheckpoint(orcId : OrchestratorIdentifier) extends FLSystemManager.Command
     final case class RespondModel(requestId: Long)
 
     // TODO
@@ -69,6 +71,9 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
     // State Information
     var orcIdToRef : MutableMap[OrchestratorIdentifier, ActorRef[Orchestrator.Command]] = MutableMap.empty
 
+    // Will use this taskList to spawn Orchestrator
+    var taskList : ListBuffer[String] = ListBuffer.empty
+
     // TODO insert host, port from config
     RedisClientHelper.initConnection()
 
@@ -80,7 +85,7 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
                 actorRef
             case None =>
                 context.log.info("Creating new orchestrator actor for {}", orcId.name())
-                val actorRef = context.spawn(Orchestrator(orcId), s"orchestrator-${orcId.name()}")
+                val actorRef = context.spawn(Orchestrator(orcId, context.self), s"orchestrator-${orcId.name()}")
                 context.watchWith(actorRef, OrchestratorTerminated(actorRef, orcId))
                 orcIdToRef += orcId -> actorRef
                 actorRef
@@ -122,14 +127,26 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
                 }
                 this
 
-            case DeviceRegistered() =>
+            case RegisterDevice(deviceId, replyTo) =>
+                var taskId : String = ConfigManager.DEFAULT_TASK_ID
+                if (!taskList.isEmpty) {
+                    taskId = taskList.head
+                }
+
+                val orcId = ConfigManager.getOrcId(taskId)
+                val orcRef = getOrchestratorRef(orcId)
+                orcRef ! Orchestrator.RegisterDevice(deviceId, replyTo)
                 this
             
             case startCycle @ StartCycle(_) =>
-                // TODO
-                println("Start Cycle Message Received -> FL System Manager")
-                println(orcIdToRef)
+                context.log.info("Start Cycle Message Received -> FL System Manager")
+                // TODO what to do if no orchestrator
                 orcIdToRef.values.foreach((o) => o ! startCycle)
+                this
+
+            case SamplingCheckpoint(orcId) =>
+                context.log.info("FLSystemManager: Samping finished for OrcID:{}", orcId.name())
+                // TODO inform HTTP Service to broadcast start cycle
                 this
             
             case OrchestratorTerminated(actor, orcId) =>

@@ -115,6 +115,6 @@ object Main {
 
         println(RedisClientHelper.hmget("device-1", "name", "clientId", "aggId", "orcId"))
 
-        ///RedisClientHelper.flushdb()
+        RedisClientHelper.flushdb()
     }
 }

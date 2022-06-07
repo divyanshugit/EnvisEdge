@@ -86,14 +86,8 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
 
     KafkaProducer.init(config.getConfig("producer-config"))
 
-    val localRouterRef = context.spawn(LocalRouter(), "LocalRouter")
-
-    val aggKafkaConsumerRef = context.spawn(
-        KafkaConsumer(config.getConfig("consumer-config"), Left(localRouterRef), ConfigManager.aggConsumerTopics), "Aggregator KafkaConsumer", DispatcherSelector.blocking()
-    )
-
     val FLSysKafkaConsumerRef = context.spawn(
-        KafkaConsumer(config.getConfig("consumer-config"), Right(context.self), ConfigManager.flSysConsumerTopics), "FLSystemManager KafkaConsumer", DispatcherSelector.blocking()
+        KafkaConsumer(config.getConfig("consumer-config"), Right(context.self)), "FLSystemManager KafkaConsumer", DispatcherSelector.blocking()
     )
 
     context.log.info("FLSystemManager Started")
@@ -104,7 +98,7 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
                 actorRef
             case None =>
                 context.log.info("Creating new orchestrator actor for {}", orcId.name())
-                val actorRef = context.spawn(Orchestrator(orcId, context.self, localRouterRef), s"orchestrator-${orcId.name()}")
+                val actorRef = context.spawn(Orchestrator(orcId, context.self), s"orchestrator-${orcId.name()}")
                 context.watchWith(actorRef, OrchestratorTerminated(actorRef, orcId))
                 orcIdToRef += orcId -> actorRef
                 actorRef

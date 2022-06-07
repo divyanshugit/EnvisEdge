@@ -49,7 +49,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
     import Aggregator._
     import FLSystemManager.{ RequestTrainer, TrainerRegistered, RequestAggregator, AggregatorRegistered, RequestRealTimeGraph, StartCycle, KafkaResponse }
     import LocalRouter.RegisterAggregator
-    import ConfigManager.AGGREGATOR_REQUEST_TOPIC
+    import ConfigManager.AGGR_SAMPLING_REQUEST_TOPIC
 
 
     // TODO
@@ -193,7 +193,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                 // Convert Message to Json String to send via kafka
                 val serializedMsg = JsonEncoder.serialize(sampling_message)
                 // TODO Send job to Python Service using Kafka
-                KafkaProducer.send(AGGREGATOR_REQUEST_TOPIC, sampling_message.basic_info.receiver_id, serializedMsg)
+                KafkaProducer.send(AGGR_SAMPLING_REQUEST_TOPIC, sampling_message.basic_info.receiver_id, serializedMsg)
                 
                 this
 

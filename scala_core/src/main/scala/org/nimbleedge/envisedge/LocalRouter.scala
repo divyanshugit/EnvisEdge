@@ -15,7 +15,8 @@ object LocalRouter {
     
     trait Command
 
-    final case class RegisterAggregator(aggId: String, replyTo: ActorRef[Aggregator.Command]) extends Command
+    final case class RegisterAggregator(aggId: String, actorRef: ActorRef[Aggregator.Command]) extends Command
+    final case class RemoveAggregator(aggId: String) extends Command
 
     // TODO
     // Add messages here
@@ -35,12 +36,16 @@ class LocalRouter(context: ActorContext[LocalRouter.Command]) extends AbstractBe
     override def onMessage(msg: Command): Behavior[Command] = 
         msg match {
             // TODO
-            case RegisterAggregator(aggId, replyTo) =>
-                handlers(aggId) = replyTo
+            case RegisterAggregator(aggId, actorRef) =>
+                handlers(aggId) = actorRef
                 this
 
             case resp @ KafkaResponse(receiverId, response) => 
                 handlers.get(receiverId).get ! resp
+                this
+
+            case RemoveAggregator(aggId) => 
+                handlers -= aggId
                 this
         }
     

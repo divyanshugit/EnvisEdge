@@ -16,17 +16,21 @@ import java.time.Duration
 import FLSystemManager.KafkaResponse
 
 object KafkaConsumer {
-    def apply(config: Config, routerRef: Either[ActorRef[LocalRouter.Command], ActorRef[FLSystemManager.Command]], topics: Vector[String]): Behavior[NotUsed] =
+    def apply(config: Config, replyTo: Either[ActorRef[LocalRouter.Command], ActorRef[FLSystemManager.Command]]): Behavior[NotUsed] =
         Behaviors.setup { context =>
-            context.log.info("KafkaConsumer started")
+            val ty = replyTo match {
+                case Left(_) => "Aggregator"
+                case Right(_) => "FLSystemManager"
+            }
+            context.log.info("{} KafkaConsumer started", ty)
 
             val consumer = new KConsumer[String, String](config.toMap.asJava)
-            consumer.subscribe(topics.asJava)
+            consumer.subscribe(ConfigManager.getConsumerTopics(ty).asJava)
 
             while(true) {
                 val records = consumer.poll(Duration.ofSeconds(10))
                 records.forEach((record) => 
-                    routerRef match {
+                    replyTo match {
                         case Left(l) => l ! KafkaResponse(record.key(), record.value())
                         case Right(r) => r ! KafkaResponse(record.key(), record.value())
                     }

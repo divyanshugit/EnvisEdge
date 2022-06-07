@@ -9,6 +9,7 @@ import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.scaladsl.ActorContext
 import akka.actor.typed.scaladsl.AbstractBehavior
+import akka.actor.typed.DispatcherSelector
 import akka.actor.typed.Signal
 import akka.actor.typed.PostStop
 
@@ -16,8 +17,8 @@ import messages._
 import scala.collection.mutable
 
 object Orchestrator {
-  def apply(orcId: OrchestratorIdentifier, parent: ActorRef[FLSystemManager.Command], routerRef: ActorRef[LocalRouter.Command]): Behavior[Command] =
-    Behaviors.setup(new Orchestrator(_, orcId, parent, routerRef))
+  def apply(orcId: OrchestratorIdentifier, parent: ActorRef[FLSystemManager.Command]): Behavior[Command] =
+    Behaviors.setup(new Orchestrator(_, orcId, parent))
 
   trait Command
 
@@ -33,9 +34,10 @@ object Orchestrator {
   // Add messages here
 }
 
-class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: OrchestratorIdentifier, parent: ActorRef[FLSystemManager.Command], routerRef: ActorRef[LocalRouter.Command]) extends AbstractBehavior[Orchestrator.Command](context) {
+class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: OrchestratorIdentifier, parent: ActorRef[FLSystemManager.Command]) extends AbstractBehavior[Orchestrator.Command](context) {
   import Orchestrator._
   import FLSystemManager.{ RequestAggregator, AggregatorRegistered, RequestTrainer, RequestRealTimeGraph, StartCycle}
+  import LocalRouter.RemoveAggregator
 
   // TODO
   // Add state and persistent information
@@ -43,6 +45,14 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
   var aggIdToClientCount : MutableMap[AggregatorIdentifier, Int] = MutableMap.empty
 
   var aggIdSamplingCompletedSet : mutable.Set[AggregatorIdentifier] = mutable.Set.empty
+
+  val routerRef = context.spawn(LocalRouter(), s"LocalRouter- ${orcId.toString()}")
+
+  val config = context.system.settings.config
+
+  val aggKafkaConsumerRef = context.spawn(
+      KafkaConsumer(config.getConfig("consumer-config"), Left(routerRef)), s"Aggregator KafkaConsumer ${orcId.toString()}", DispatcherSelector.blocking()
+  )
 
   context.log.info("Orchestrator {} started", orcId.name())
 
@@ -156,6 +166,7 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
       
       case AggregatorTerminated(actor, aggId) =>
         context.log.info("Aggregator with id {} has been terminated", aggId.toString())
+        routerRef ! RemoveAggregator(aggId.toString())
         // TODO
         this
 

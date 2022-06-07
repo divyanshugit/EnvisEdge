@@ -50,7 +50,11 @@ class JobSubmitMessage(Message):
     def get_job_type(self):
         '''Returns job_type from JobSubmitMessage Object'''
         return self.job_type
-        
+
+    def get_receiver_id(self):
+        '''Returns receiverid from JobSubmitMessage Object'''
+        return super().get_receiver_id()
+
     def serialize(self):
         # pack the arguments after serilization into the resposne dict
         response_dict = {

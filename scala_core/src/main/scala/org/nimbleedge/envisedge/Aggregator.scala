@@ -18,10 +18,10 @@ import akka.actor.Timers
 import akka.actor.typed.scaladsl.TimerScheduler
 
 object Aggregator {
-    def apply(aggId: AggregatorIdentifier, parent: ActorRef[Orchestrator.Command]): Behavior[Command] =
+    def apply(aggId: AggregatorIdentifier, parent: ActorRef[Orchestrator.Command], routerRef: ActorRef[LocalRouter.Command]): Behavior[Command] =
         Behaviors.setup{context =>
             Behaviors.withTimers { timers =>
-                new Aggregator(context, timers, aggId, parent)
+                new Aggregator(context, timers, aggId, parent, routerRef)
             }
         }
     
@@ -36,8 +36,6 @@ object Aggregator {
 
     final case class InitiateSampling(samplingPolicy: String) extends Aggregator.Command
 
-    final case class SamplingFinished() extends Aggregator.Command
-
     final case class CheckS3ForModels() extends Aggregator.Command
 
     private case object TimerKey
@@ -47,10 +45,11 @@ object Aggregator {
 }
 
 // TODO: parent should be either of orchestrator or aggregator.
-class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerScheduler[Aggregator.Command], aggId: AggregatorIdentifier, parent: ActorRef[Orchestrator.Command]) extends AbstractBehavior[Aggregator.Command](context) {
+class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerScheduler[Aggregator.Command], aggId: AggregatorIdentifier, parent: ActorRef[Orchestrator.Command], routerRef: ActorRef[LocalRouter.Command]) extends AbstractBehavior[Aggregator.Command](context) {
     import Aggregator._
-    import FLSystemManager.StartCycle
-    import FLSystemManager.{ RequestTrainer, TrainerRegistered, RequestAggregator, AggregatorRegistered, RequestRealTimeGraph }
+    import FLSystemManager.{ RequestTrainer, TrainerRegistered, RequestAggregator, AggregatorRegistered, RequestRealTimeGraph, StartCycle, KafkaResponse }
+    import LocalRouter.RegisterAggregator
+    import ConfigManager.AGGREGATOR_REQUEST_TOPIC
 
 
     // TODO
@@ -62,6 +61,8 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
     // List of trainers which are children of this aggregator
     var trainerIdsToRef : MutableMap[TrainerIdentifier, ActorRef[Trainer.Command]] = MutableMap.empty
 
+
+    routerRef ! RegisterAggregator(aggId.toString(), context.self)
 
     context.log.info("Aggregator {} started", aggId.toString())
 
@@ -85,7 +86,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                 actorRef
             case None =>
                 context.log.info("Creating new Aggregator actor for {}", aggregatorId.toString())
-                val actorRef = context.spawn(Aggregator(aggregatorId, parent), s"aggregator-${aggregatorId.name()}")
+                val actorRef = context.spawn(Aggregator(aggregatorId, parent, routerRef), s"aggregator-${aggregatorId.name()}")
                 context.watchWith(actorRef, AggregatorTerminated(actorRef, aggregatorId))
                 aggregatorIdsToRef += aggregatorId -> actorRef
                 actorRef
@@ -192,15 +193,22 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                 // Convert Message to Json String to send via kafka
                 val serializedMsg = JsonEncoder.serialize(sampling_message)
                 // TODO Send job to Python Service using Kafka
+                KafkaProducer.send(AGGREGATOR_REQUEST_TOPIC, sampling_message.basic_info.receiver_id, serializedMsg)
                 
                 this
-            
-            case trackMsg @ SamplingFinished() =>
-                context.log.info("Aggregator ID:{} Sampling Completed", aggId.toString())
-                // TODO update the list of devies on redis
-                parent ! Orchestrator.SamplingCheckpoint(aggId)
 
-                timers.startSingleTimer(TimerKey, CheckS3ForModels(), ConfigManager.aggregatorS3ProbeIntervalSec.second)
+            case KafkaResponse(requestId, message) =>
+                val msg = JsonDecoder.deserialize(message)
+                msg match {
+                    case Sampling_JobResponse(_) => 
+                        // TODO: Handle the response appropriately
+                        parent ! Orchestrator.SamplingCheckpoint(aggId)
+
+                        timers.startSingleTimer(TimerKey, CheckS3ForModels(), ConfigManager.aggregatorS3ProbeIntervalSec.second)
+                    case Aggregation_JobResponse(_) =>
+                        // TODO: Handle the reponse appropriately
+                    case _ => throw new IllegalArgumentException(s"Invalid response_type : ${msg}")
+                }
                 this
 
             case trackMsg @ CheckS3ForModels() =>

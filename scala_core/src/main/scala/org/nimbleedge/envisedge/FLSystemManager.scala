@@ -10,6 +10,8 @@ import akka.actor.typed.scaladsl.ActorContext
 import akka.actor.typed.scaladsl.AbstractBehavior
 import akka.actor.typed.Signal
 import akka.actor.typed.PostStop
+import akka.actor.typed.DispatcherSelector
+import com.typesafe.config.Config
 
 object FLSystemManager {
     def apply(): Behavior[Command] =
@@ -52,11 +54,14 @@ object FLSystemManager {
     
     final case class RespondRealTimeGraph(requestId: Long, realTimeGraph: TopologyTree)
 
+    final case class KafkaResponse(receiverId: String, message: String) extends Command with LocalRouter.Command with Aggregator.Command
+
     // Start cycle
     // TODO
     // final case class StartCycle(requestId: Long, replyTo: ActorRef[RespondModel]) extends FLSystemManager.Command with Orchestrator.Command with Aggregator.Command
     final case class StartCycle(requestId : Long) extends FLSystemManager.Command with Orchestrator.Command with Aggregator.Command
     final case class SamplingCheckpoint(orcId : OrchestratorIdentifier) extends FLSystemManager.Command
+    final case class AggregationCheckpoint() extends FLSystemManager.Command
     final case class RespondModel(requestId: Long)
 
     // TODO
@@ -77,6 +82,20 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
     // TODO insert host, port from config
     RedisClientHelper.initConnection()
 
+    val config = context.system.settings.config
+
+    KafkaProducer.init(config.getConfig("producer-config"))
+
+    val localRouterRef = context.spawn(LocalRouter(), "LocalRouter")
+
+    val aggKafkaConsumerRef = context.spawn(
+        KafkaConsumer(config.getConfig("consumer-config"), Left(localRouterRef), ConfigManager.aggConsumerTopics), "Aggregator KafkaConsumer", DispatcherSelector.blocking()
+    )
+
+    val FLSysKafkaConsumerRef = context.spawn(
+        KafkaConsumer(config.getConfig("consumer-config"), Right(context.self), ConfigManager.flSysConsumerTopics), "FLSystemManager KafkaConsumer", DispatcherSelector.blocking()
+    )
+
     context.log.info("FLSystemManager Started")
 
     private def getOrchestratorRef(orcId: OrchestratorIdentifier): ActorRef[Orchestrator.Command] = {
@@ -85,7 +104,7 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
                 actorRef
             case None =>
                 context.log.info("Creating new orchestrator actor for {}", orcId.name())
-                val actorRef = context.spawn(Orchestrator(orcId, context.self), s"orchestrator-${orcId.name()}")
+                val actorRef = context.spawn(Orchestrator(orcId, context.self, localRouterRef), s"orchestrator-${orcId.name()}")
                 context.watchWith(actorRef, OrchestratorTerminated(actorRef, orcId))
                 orcIdToRef += orcId -> actorRef
                 actorRef
@@ -128,6 +147,7 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
                 this
 
             case RegisterDevice(deviceId, replyTo) =>
+                //TODO
                 var taskId : String = ConfigManager.DEFAULT_TASK_ID
                 if (!taskList.isEmpty) {
                     taskId = taskList.head
@@ -152,6 +172,15 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
             case OrchestratorTerminated(actor, orcId) =>
                 context.log.info("Orchestrator with id {} has been terminated", orcId.name())
                 // TODO
+                this
+
+            case AggregationCheckpoint() =>
+                // TODO
+                this
+
+            case KafkaResponse(requestId, message) => 
+                val msg = JsonDecoder.deserialize(message)
+                // TODO: Handle message appropriately
                 this
         }
 

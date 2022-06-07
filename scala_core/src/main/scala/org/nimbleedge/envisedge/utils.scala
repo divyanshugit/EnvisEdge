@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.apache.kafka.common.errors.SerializationException
 import org.apache.kafka.common.serialization.Serializer
+import scala.util.Random
 
 //Circe imports
 import io.circe._
@@ -24,7 +25,7 @@ object Utils {
       .asScala
       .map(pair => (pair.getKey, config.getAnyRef(pair.getKey)))
       .toMap
-  }
+    }
 }
 
 object JsonEncoder {

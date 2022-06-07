@@ -16,8 +16,8 @@ import messages._
 import scala.collection.mutable
 
 object Orchestrator {
-  def apply(orcId: OrchestratorIdentifier, parent: ActorRef[FLSystemManager.Command]): Behavior[Command] =
-    Behaviors.setup(new Orchestrator(_, orcId, parent))
+  def apply(orcId: OrchestratorIdentifier, parent: ActorRef[FLSystemManager.Command], routerRef: ActorRef[LocalRouter.Command]): Behavior[Command] =
+    Behaviors.setup(new Orchestrator(_, orcId, parent, routerRef))
 
   trait Command
 
@@ -33,7 +33,7 @@ object Orchestrator {
   // Add messages here
 }
 
-class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: OrchestratorIdentifier, parent: ActorRef[FLSystemManager.Command]) extends AbstractBehavior[Orchestrator.Command](context) {
+class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: OrchestratorIdentifier, parent: ActorRef[FLSystemManager.Command], routerRef: ActorRef[LocalRouter.Command]) extends AbstractBehavior[Orchestrator.Command](context) {
   import Orchestrator._
   import FLSystemManager.{ RequestAggregator, AggregatorRegistered, RequestTrainer, RequestRealTimeGraph, StartCycle}
 
@@ -48,7 +48,7 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
 
   private def spawnAggregator(aggId : AggregatorIdentifier) : ActorRef[Aggregator.Command] = {
     context.log.info("Creating new aggregator actor for {}", aggId.name())
-    val actorRef = context.spawn(Aggregator(aggId, context.self), s"aggregator-${aggId.name()}")
+    val actorRef = context.spawn(Aggregator(aggId, context.self, routerRef), s"aggregator-${aggId.name()}")
     context.watchWith(actorRef, AggregatorTerminated(actorRef, aggId))
     aggIdToRef += aggId -> actorRef
     aggIdToClientCount += aggId -> 0
@@ -177,7 +177,7 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
   
   override def onSignal: PartialFunction[Signal,Behavior[Command]] = {
     case PostStop =>
-      context.log.info("Orchestrator {} stopeed", orcId.name())
+      context.log.info("Orchestrator {} stopped", orcId.name())
       this
   }
 }

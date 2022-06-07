@@ -20,12 +20,12 @@ case class ResultJobResponse (
 
 case class DataJobResponse (
     job_type : String,
-    sender_id : Int,
-    receiver_id : Int,
     results : ResultJobResponse
 )
 
 case class JobResponseBasic (
     __type__ : String,
+    sender_id : String,
+    receiver_id : String,
     __data__ : DataJobResponse
 )

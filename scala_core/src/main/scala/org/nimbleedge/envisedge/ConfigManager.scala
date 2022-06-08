@@ -4,10 +4,10 @@ import org.nimbleedge.envisedge.models.OrchestratorIdentifier
 
 object ConfigManager {
     val DEFAULT_TASK_ID = "DEFAULT"
-    val AGGR_SAMPLING_REQUEST_TOPIC = "job-sampling-request-aggregator"
-    val AGGR_SAMPLING_RESPONSE_TOPIC = "job-sampling-response-aggregator"
-    val AGGR_AGGREGATION_REQUEST_TOPIC = "job-aggregation-request-aggregator"
-    val AGGR_AGGREGATION_RESPONSE_TOPIC = "job-aggregation-response-aggregator"
+    val AGGR_SAMPLING_REQUEST_TOPIC = "job-request-aggregator"
+    val AGGR_SAMPLING_RESPONSE_TOPIC = "job-response-aggregator"
+    val AGGR_AGGREGATION_REQUEST_TOPIC = "job-request-aggregator"
+    val AGGR_AGGREGATION_RESPONSE_TOPIC = "job-response-aggregator"
     val FLSYS_RESPONSE_TOPIC = "fl-response"
     val FLSYS_REQUEST_TOPIC = "fl-request"
 

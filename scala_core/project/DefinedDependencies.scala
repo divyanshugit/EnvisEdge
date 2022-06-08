@@ -11,6 +11,7 @@ object DefinedDependencies {
     val jackson_module  = "2.12.3"
     val circe           = "0.14.1"
     val redis           = "3.41"
+    val aws             = "1.12.230"
   }
 
   object Akka {
@@ -49,4 +50,8 @@ object DefinedDependencies {
     val client = "net.debasishg" %% "redisclient" % Versions.redis
   }
 
+  object Aws {
+    val sdk = "com.amazonaws"	%	"aws-java-sdk" % Versions.aws
+    val conf = "com.typesafe" % "config" % "1.4.1" 
+  }
 }

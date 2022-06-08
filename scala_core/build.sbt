@@ -15,5 +15,7 @@ projectDependencies ++= Seq(
   DefinedDependencies.Circe.circe_core,
   DefinedDependencies.Circe.circe_generic,
   DefinedDependencies.Circe.circe_parser,
-  DefinedDependencies.Redis.client
+  DefinedDependencies.Redis.client,
+  DefinedDependencies.Aws.sdk,
+  DefinedDependencies.Aws.conf
 )

@@ -26,9 +26,10 @@ object Orchestrator {
   private final case class AggregatorTerminated(actor: ActorRef[Aggregator.Command], aggId: AggregatorIdentifier)
     extends Orchestrator.Command
 
-  final case class RegisterDevice(device: String, replyTo: ActorRef[FLSystemManager.DeviceRegistered]) extends Orchestrator.Command
+  final case class RegisterDevice(device: String) extends Orchestrator.Command
 
   final case class SamplingCheckpoint(aggId: AggregatorIdentifier) extends Orchestrator.Command
+  final case class AggregationCheckpoint(aggId: AggregatorIdentifier) extends Orchestrator.Command
 
   // TODO
   // Add messages here
@@ -45,6 +46,7 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
   var aggIdToClientCount : MutableMap[AggregatorIdentifier, Int] = MutableMap.empty
 
   var aggIdSamplingCompletedSet : mutable.Set[AggregatorIdentifier] = mutable.Set.empty
+  var aggIdAggregationCompletedSet : mutable.Set[AggregatorIdentifier] = mutable.Set.empty
 
   val routerRef = context.spawn(LocalRouter(), s"LocalRouter- ${orcId.toString()}")
 
@@ -94,6 +96,12 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
     } else {
       return filteredMap.head._1
     }
+  }
+
+  private def reset() = {
+    aggIdToClientCount.foreach(agg => aggIdToClientCount.update(agg._1, 0))
+    aggIdSamplingCompletedSet  = mutable.Set.empty
+    aggIdAggregationCompletedSet  = mutable.Set.empty
   }
 
   override def onMessage(msg: Command): Behavior[Command] =
@@ -149,18 +157,16 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
         }
         this
 
-      case RegisterDevice(device, replyTo) =>
+      case RegisterDevice(device) =>
         context.log.info("Orc id:{} device registration for device:{}", orcId.name(), device)
         val clientId = "client-" + device
         val aggId = getAvailableAggregator()
         //update this pair to the redis
-        val dataMap = Map("name" -> device, "clientId" -> clientId, "aggId" -> aggId.toString(), "orcId" -> orcId.name())
+        val dataMap = Map("name" -> device, "clientId" -> clientId, "aggId" -> aggId.toString(), "orcId" -> orcId.name(), "cycleAccepted" -> 0)
         RedisClientHelper.hmset(device, dataMap)
         RedisClientHelper.rpush(aggId.toString(), clientId)
 
         aggIdToClientCount(aggId) += 1
-
-        replyTo ! FLSystemManager.DeviceRegistered(clientId)
         this
 
       
@@ -182,6 +188,17 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
           context.log.info("Orc id:{} Sampling Checkpoint Finished for all Aggs, sending next checkpoint to FLSystemManager", orcId.name())
           parent ! FLSystemManager.SamplingCheckpoint(orcId)
         }
+        this
+
+      case AggregationCheckpoint(aggId) =>
+        context.log.info("Orc id:{} Aggregation Checkpoint for Agg:{}", orcId.name(), aggId.name())
+        aggIdAggregationCompletedSet += aggId
+        if (aggIdAggregationCompletedSet.size == orcId.getChildren().size) {
+          context.log.info("Orc id:{} Sampling Checkpoint Finished for all Aggs, sending next checkpoint to FLSystemManager", orcId.name())
+          parent ! FLSystemManager.SamplingCheckpoint(orcId)
+        }
+        // reset all sturctures
+        reset()
         this
 
     }

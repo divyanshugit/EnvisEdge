@@ -32,7 +32,7 @@ object FLSystemManager {
     
     final case class AggregatorRegistered(requestId: Long, actor: ActorRef[Aggregator.Command])
 
-    final case class RegisterDevice(deviceId: String, replyTo: ActorRef[DeviceRegistered]) extends FLSystemManager.Command
+    final case class RegisterDevice(deviceId: String) extends FLSystemManager.Command
     final case class DeviceRegistered(clientId: String)
 
     final case class RequestTrainer(requestId: Long, traId: TrainerIdentifier, replyTo: ActorRef[TrainerRegistered])
@@ -59,7 +59,7 @@ object FLSystemManager {
     // Start cycle
     // TODO
     // final case class StartCycle(requestId: Long, replyTo: ActorRef[RespondModel]) extends FLSystemManager.Command with Orchestrator.Command with Aggregator.Command
-    final case class StartCycle(requestId : Long) extends FLSystemManager.Command with Orchestrator.Command with Aggregator.Command
+    final case class StartCycle(taskId : String) extends FLSystemManager.Command with Orchestrator.Command with Aggregator.Command
     final case class SamplingCheckpoint(orcId : OrchestratorIdentifier) extends FLSystemManager.Command
     final case class AggregationCheckpoint() extends FLSystemManager.Command
     final case class RespondModel(requestId: Long)
@@ -140,42 +140,54 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
                 }
                 this
 
-            case RegisterDevice(deviceId, replyTo) =>
+            case RegisterDevice(deviceId) =>
                 //TODO
                 var taskId : String = ConfigManager.DEFAULT_TASK_ID
                 if (!taskList.isEmpty) {
                     taskId = taskList.head
+                } else {
+                    taskList += taskId
                 }
 
                 val orcId = ConfigManager.getOrcId(taskId)
                 val orcRef = getOrchestratorRef(orcId)
-                orcRef ! Orchestrator.RegisterDevice(deviceId, replyTo)
+                orcRef ! Orchestrator.RegisterDevice(deviceId)
                 this
             
-            case startCycle @ StartCycle(_) =>
+            case startCycle @ StartCycle(taskId) =>
                 context.log.info("Start Cycle Message Received -> FL System Manager")
                 // TODO what to do if no orchestrator
-                orcIdToRef.values.foreach((o) => o ! startCycle)
+                val orcRef = getOrchestratorRef(OrchestratorIdentifier(taskId))
+                orcRef ! startCycle
                 this
 
             case SamplingCheckpoint(orcId) =>
                 context.log.info("FLSystemManager: Samping finished for OrcID:{}", orcId.name())
-                // TODO inform HTTP Service to broadcast start cycle
+                // inform HTTP Service to broadcast start cycle
+                KafkaProducer.send(ConfigManager.FLSYS_REQUEST_TOPIC, "StartCycle", orcId.name())
                 this
             
             case OrchestratorTerminated(actor, orcId) =>
                 context.log.info("Orchestrator with id {} has been terminated", orcId.name())
-                // TODO
+                // TODO cycle termination
                 this
 
             case AggregationCheckpoint() =>
-                // TODO
+                context.log.info("FLSystemManager: Aggregation finished")
+                // inform HTTP Service to broadcast update model 
+                KafkaProducer.send(ConfigManager.FLSYS_REQUEST_TOPIC, "UpdateModel", "")
                 this
 
             case KafkaResponse(requestId, message) => 
-                val msg = JsonDecoder.deserialize(message)
-                // TODO: Handle message appropriately
-                this
+                //val msg = JsonDecoder.deserialize(message)
+                requestId match {
+                    case "Register" =>
+                        context.self ! RegisterDevice(message)
+                        this
+                    case "StartCycle" =>
+                        context.self ! StartCycle(message)
+                        this
+                }
         }
 
     override def onSignal: PartialFunction[Signal,Behavior[Command]] = {

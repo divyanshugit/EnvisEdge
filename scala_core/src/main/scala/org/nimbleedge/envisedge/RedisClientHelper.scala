@@ -34,7 +34,7 @@ object RedisClientHelper {
         client.llen(key)
     }
 
-    def hmset(hash: String, map: Map[String, String]) = {
+    def hmset(hash: String, map: Map[String, Any]) = {
         client.hmset(hash, map)
     }
 

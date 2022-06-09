@@ -8,20 +8,20 @@ object ConfigManager {
     val AGGR_SAMPLING_RESPONSE_TOPIC = "job-response-aggregator"
     val AGGR_AGGREGATION_REQUEST_TOPIC = "job-request-aggregator"
     val AGGR_AGGREGATION_RESPONSE_TOPIC = "job-response-aggregator"
-    val FLSYS_RESPONSE_TOPIC = "fl-response"
-    val FLSYS_REQUEST_TOPIC = "fl-request"
+    val FLSYS_REQUEST_TOPIC = "fl-system-to-http-service"
+    val FLSYS_RESPONSE_TOPIC = "http-service-to-fl-system"
 
     var maxClientsInAgg : Int = 2000
     var samplingPolicy : String = "default"
 
     var aggSamplingConsumerTopics: Vector[String] = Vector(AGGR_AGGREGATION_RESPONSE_TOPIC)
     var aggAggregationConsumerTopics: Vector[String] = Vector(AGGR_SAMPLING_RESPONSE_TOPIC)
-    var flSysConsumerTopics: Vector[String] = Vector(FLSYS_REQUEST_TOPIC)
+    var flSysConsumerTopics: Vector[String] = Vector(FLSYS_RESPONSE_TOPIC)
 
     var aggregatorS3ProbeIntervalSec = 10
 
     def getOrcId(taskId : String) : OrchestratorIdentifier = {
-        return OrchestratorIdentifier("Orc-" + taskId)
+        return OrchestratorIdentifier(taskId)
     }
 
     def getConsumerTopics(ty: String) : Vector[String] = {

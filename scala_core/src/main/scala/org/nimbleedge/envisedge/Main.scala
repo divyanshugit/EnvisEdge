@@ -5,6 +5,8 @@ import akka.actor.typed.{ActorSystem, ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.NotUsed
 
+import scala.collection.mutable.{Map => MutableMap, ListBuffer}
+
 object HostServer {
     // import FLSystemManager._
     import Aggregator._
@@ -97,14 +99,9 @@ object Main {
         //ActorSystem(HostServer(), "host-server")
 
         RedisClientHelper.initConnection()
-        RedisClientHelper.set("firstKey", "FirstValue")
-        RedisClientHelper.set("secondKey", "SecondValue")
 
-        println(RedisClientHelper.get("firstKey"))
-        println(RedisClientHelper.get("secondKey"))
-
-        val map = Map("name" -> "Android", "clientId" -> "client-1", "aggId" -> "agg-1", "orcId" -> "orc-1")
-        val map2 = Map("name" -> "IOS", "clientId" -> "client-2", "aggId" -> "agg-1", "orcId" -> "orc-1")
+        val map = Map("name" -> "Android", "clientId" -> "client-1", "aggId" -> "agg-1", "orcId" -> "orc-1" ,"cycleAccepted" -> 1)
+        val map2 = Map("name" -> "IOS", "clientId" -> "client-2", "aggId" -> "agg-1", "orcId" -> "orc-1" ,"cycleAccepted" -> 0)
         RedisClientHelper.hmset("device-1", map)
         RedisClientHelper.hmset("device-2", map2)
 

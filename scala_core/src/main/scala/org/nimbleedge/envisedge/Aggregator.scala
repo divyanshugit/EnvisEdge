@@ -65,10 +65,6 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
 
     routerRef ! RegisterAggregator(aggId.toString(), context.self)
 
-    val aggDir = s"${aggId.getOrchestrator().name()}/${aggId.name()}/"
-
-    val aggModelLocation = aggDir + aggId.name() + ".pt"
-
     private var round_index = 0
 
     context.log.info("Aggregator {} started", aggId.toString())
@@ -133,8 +129,8 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                 job_args = clientList,
                 job_kwargs = null,
                 workerstate = null,
-                senderid = aggId.toString(),
-                receiverid = aggId.toString(),
+                senderid = aggId.name(),
+                receiverid = aggId.name(),
                 job_type = "sampling"
             )
         )
@@ -148,16 +144,16 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
             __data__ = JobSubmitMessageData (
                 job_args = List(),
                 job_kwargs = null,
-                senderid = aggId.toString(),
-                receiverid = aggId.toString(), // confirm this
+                senderid = aggId.name(),
+                receiverid = aggId.name(), // confirm this
                 job_type = "aggregate",
                 workerstate = WorkerState (
                     __type__ = "fedrec.data_models.aggregator_state_model.AggregatorState",
                     __data__ = WorkerStateData (
-                        worker_index = aggId.toString(),
+                        worker_index = aggId.name(),
                         round_index = round_index,
                         model_prepoc = null,
-                        storage = aggDir, // Confirm this
+                        storage = s"/models/${aggId.toString()}/model_file-${round_index-1}.pt", // Confirm this
                         local_sample_number = 0,
                         local_training_steps = 0,
                         state_dict = StateDict (
@@ -165,7 +161,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                             model = StateDictModel (
                                 __type__ = "fedrec.data_models.state_tensors_model.StateTensors",
                                 __data__ = StateDictModelData (
-                                    storage = aggModelLocation // configure this 
+                                    storage = s"/models/${aggId.toString()}/model_file-${round_index-1}.pt" // configure this 
                                 )
                             ),
                             worker_state = SubWorkerState (
@@ -176,7 +172,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                                         state = SubWorkerStateModelDataState (
                                             __type__ = "fedrec.data_models.tensors_model.EnvisTensors",
                                             __data__ = SubWorkerStateModelDataStateData (
-                                                tensor_path = aggModelLocation // configure this
+                                                tensor_path = s"/models/${aggId.toString()}/model_file-${round_index}.pt" // configure this
                                             )
                                         )
                                     )
@@ -278,7 +274,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                                 timers.startSingleTimer(TimerKey, CheckS3ForModels(), ConfigManager.aggregatorS3ProbeIntervalMinutes.minutes)
                             case "aggregate" => 
                                 // TODO: Handle the reponse appropriately
-                                AmazonS3Communicator.emptyDir(AmazonS3Communicator.s3Config.getString("bucket"), aggDir)
+                                AmazonS3Communicator.emptyDir(AmazonS3Communicator.s3Config.getString("bucket"), s"/clients/${aggId.toString()}/")
                                 round_index += 1
                             case _ => throw new IllegalArgumentException(s"Invalid response_type : ${msg}")
                         }
@@ -290,7 +286,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
             case trackMsg @ CheckS3ForModels() =>
                 // Connect to S3, and ask for models
                 context.log.info("Aggregator ID:{} CheckS3ForModels", aggId.toString())
-                val modelList = AmazonS3Communicator.listAllFiles(AmazonS3Communicator.s3Config.getString("bucket"), aggDir)
+                val modelList = AmazonS3Communicator.listAllFiles(AmazonS3Communicator.s3Config.getString("bucket"), s"/clients/${aggId.toString()}/")
 
                 if (modelList.length >= ConfigManager.minClientsForAggregation) {
                     timers.cancel()

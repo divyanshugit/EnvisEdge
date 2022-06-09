@@ -75,7 +75,7 @@ case class AggregatorIdentifier(parentIdentifier: Identifier, id: String) extend
 
     // String Representation
     override def name(): String = id
-    override def toString(): String = parentIdentifier.toString() + " -> " + id
+    override def toString(): String = parentIdentifier.toString() + "/" + id
 
     // Get List
     override def toList(): List[Identifier] = parentIdentifier.toList().appended(this)

@@ -65,7 +65,11 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
 
     routerRef ! RegisterAggregator(aggId.toString(), context.self)
 
-    val aggDir = s"${aggId.getOrchestrator().toString()}/${aggId.toString()}/"
+    val aggDir = s"${aggId.getOrchestrator().name()}/${aggId.name()}/"
+
+    val aggModelLocation = aggDir + aggId.name() + ".pt"
+
+    private var round_index = 0
 
     context.log.info("Aggregator {} started", aggId.toString())
 
@@ -120,37 +124,71 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
         return trainerHistoryToRef
     }
 
-    def makeSamplingJobSubmit(clientList: List[String]) : SamplingJobSubmit = {
+    def makeSamplingJobSubmit(clientList: List[String]) : JobSubmitMessage = {
         println("In make Sampling message")
         println(trainerIdsToRef)
-        var samplingMessage = SamplingJobSubmit(
-            basic_info = JobSubmitBasic(
-                __type__ = "sampling-jobsubmit",
-                job_type = "sampling",
-                sender_id = aggId.toString(),
-                // Fix this?
-                receiver_id = aggId.toString()
-            ),
-            trainer_list = clientList,
+        var samplingMessage = JobSubmitMessage (
+            __type__ = "fedrec.data_models.job_submit_model.JobSubmitMessage",
+            __data__ = JobSubmitMessageData (
+                job_args = clientList,
+                job_kwargs = null,
+                workerstate = null,
+                senderid = aggId.toString(),
+                receiverid = aggId.toString(),
+                job_type = "sampling"
+            )
         )
-
         return samplingMessage
     }
 
-    def makeAggregationJobSubmit(modelDirs: String) : AggregationJobSubmit = {
-        println("In make Sampling message")
-        println(trainerIdsToRef)
-        var aggregationMessage = AggregationJobSubmit(
-            basic_info = JobSubmitBasic(
-                __type__ = "aggregation-jobsubmit",
-                job_type = "aggregation",
-                sender_id = aggId.toString(),
-                // Fix this?
-                receiver_id = aggId.toString()
-            ),
-            models_dir = modelDirs,
+    def makeAggregationJobSubmit() : JobSubmitMessage = {
+        println("In make Aggregation message")
+        var aggregationMessage = JobSubmitMessage (
+            __type__ = "fedrec.data_models.job_submit_model.JobSubmitMessage",
+            __data__ = JobSubmitMessageData (
+                job_args = List(),
+                job_kwargs = null,
+                senderid = aggId.toString(),
+                receiverid = aggId.toString(),
+                job_type = "aggregate",
+                workerstate = WorkerState (
+                    __type__ = "fedrec.data_models.aggregator_state_model.AggregatorState",
+                    __data__ = WorkerStateData (
+                        worker_index = aggId.toString(),
+                        round_index = round_index,
+                        model_prepoc = null,
+                        storage = aggDir, // Confirm this
+                        local_sample_number = 0,
+                        local_training_steps = 0,
+                        state_dict = StateDict (
+                            step = 0,
+                            model = StateDictModel (
+                                __type__ = "fedrec.data_models.state_tensors_model.StateTensors",
+                                __data__ = StateDictModelData (
+                                    storage = aggModelLocation // configure this 
+                                )
+                            ),
+                            worker_state = SubWorkerState (
+                                model = SubWorkerStateModel (
+                                    __type__ = "experiments.regression.net.Regression_Net",
+                                    __data__ = SubWorkerStateModelData (
+                                        class_ref_name = "experiments.regression.net.Regression_Net",
+                                        state = SubWorkerStateModelDataState (
+                                            __type__ = "fedrec.data_models.tensors_model.EnvisTensors",
+                                            __data__ = SubWorkerStateModelDataStateData (
+                                                tensor_path = aggModelLocation // configure this
+                                            )
+                                        )
+                                    )
+                                ),
+                                in_neighbours = Map(), // Initialize this
+                                out_neighbours = Map()
+                            )
+                        )
+                    )
+                )
+            )
         )
-
         return aggregationMessage
     }
 
@@ -213,19 +251,19 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                 // Convert Message to Json String to send via kafka
                 val serializedMsg = JsonEncoder.serialize(samplingMessage)
                 // TODO Send job to Python Service using Kafka
-                KafkaProducer.send(AGGR_SAMPLING_REQUEST_TOPIC, samplingMessage.basic_info.receiver_id, serializedMsg)
+                KafkaProducer.send(AGGR_SAMPLING_REQUEST_TOPIC, samplingMessage.__data__.receiverid, serializedMsg)
                 
                 this
 
             case StartAggregation(aggregationPolicy) =>
                 context.log.info("Aggregator Id:{} Start Aggregation", aggId.toString())
 
-                val aggregationMessage = makeAggregationJobSubmit(aggDir)
+                /*val aggregationMessage = makeAggregationJobSubmit(aggDir)
                 context.log.info("Aggregator Id:{} Aggregation Message: {}", aggId.toString(), aggregationMessage)
 
                 val serializedMsg = JsonEncoder.serialize(aggregationMessage)
                 // TODO Send job to Python Service using Kafka
-                KafkaProducer.send(AGGR_AGGREGATION_REQUEST_TOPIC, aggregationMessage.basic_info.receiver_id, serializedMsg)
+                KafkaProducer.send(AGGR_AGGREGATION_REQUEST_TOPIC, aggregationMessage.basic_info.receiver_id, serializedMsg)*/
                 this
 
             case KafkaResponse(requestId, message) =>
@@ -239,6 +277,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                     case Aggregation_JobResponse(_) =>
                         // TODO: Handle the reponse appropriately
                         AmazonS3Communicator.emptyDir(AmazonS3Communicator.s3Config.getString("bucket"), aggDir)
+                        round_index += 1
                     case _ => throw new IllegalArgumentException(s"Invalid response_type : ${msg}")
                 }
                 this

@@ -50,10 +50,8 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
 
   val routerRef = context.spawn(LocalRouter(), s"LocalRouter- ${orcId.toString()}")
 
-  val config = context.system.settings.config
-
   val aggKafkaConsumerRef = context.spawn(
-      KafkaConsumer(config.getConfig("consumer-config"), Left(routerRef)), s"Aggregator KafkaConsumer ${orcId.toString()}", DispatcherSelector.blocking()
+      KafkaConsumer(ConfigManager.staticConfig.getConfig("consumer-config"), Left(routerRef)), s"Aggregator KafkaConsumer ${orcId.toString()}", DispatcherSelector.blocking()
   )
 
   context.log.info("Orchestrator {} started", orcId.name())

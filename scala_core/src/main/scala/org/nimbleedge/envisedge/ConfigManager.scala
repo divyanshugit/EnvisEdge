@@ -1,8 +1,11 @@
 package org.nimbleedge.envisedge
 
 import org.nimbleedge.envisedge.models.OrchestratorIdentifier
+import com.typesafe.config.{Config, ConfigFactory}
 
 object ConfigManager {
+    val staticConfig = ConfigFactory.load()
+
     val DEFAULT_TASK_ID = "DEFAULT"
     val AGGR_SAMPLING_REQUEST_TOPIC = "job-request-aggregator"
     val AGGR_SAMPLING_RESPONSE_TOPIC = "job-response-aggregator"
@@ -12,13 +15,15 @@ object ConfigManager {
     val FLSYS_RESPONSE_TOPIC = "http-service-to-fl-system"
 
     var maxClientsInAgg : Int = 2000
+    var minClientsForAggregation: Int = 1000
     var samplingPolicy : String = "default"
+    var aggregationPolicy: String = "default"
 
     var aggSamplingConsumerTopics: Vector[String] = Vector(AGGR_AGGREGATION_RESPONSE_TOPIC)
     var aggAggregationConsumerTopics: Vector[String] = Vector(AGGR_SAMPLING_RESPONSE_TOPIC)
     var flSysConsumerTopics: Vector[String] = Vector(FLSYS_RESPONSE_TOPIC)
 
-    var aggregatorS3ProbeIntervalSec = 10
+    var aggregatorS3ProbeIntervalMinutes = 60
 
     def getOrcId(taskId : String) : OrchestratorIdentifier = {
         return OrchestratorIdentifier(taskId)

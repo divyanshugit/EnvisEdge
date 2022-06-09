@@ -1,4 +1,4 @@
-import com.typesafe.config.{Config, ConfigFactory}
+package org.nimbleedge.envisedge
 
 import com.amazonaws.auth.BasicAWSCredentials
 import com.amazonaws.services.s3.AmazonS3Client
@@ -9,10 +9,8 @@ import com.amazonaws.services.s3.model.ListObjectsRequest
 import collection.JavaConverters._
 
 object AmazonS3Communicator {
-
-    val applicationConf: Config = ConfigFactory.load()
-
-    val credentials = new BasicAWSCredentials(applicationConf.getString("s3.aws_access_key"), applicationConf.getString("s3.aws_secret_access_key"))
+    val s3Config = ConfigManager.staticConfig.getConfig("s3")
+    val credentials = new BasicAWSCredentials(s3Config.getString("s3.aws_access_key"), s3Config.getString("s3.aws_secret_access_key"))
     val amazonS3Client = new AmazonS3Client(credentials)
     println("S3 Client Init...")
 
@@ -44,7 +42,7 @@ object AmazonS3Communicator {
             //val data = amazonS3Client.getObjectMetadata(bucket, fileKeyName)
             val splitPath = fileKeyName.split("/")
 
-            val filePath = applicationConf.getString("s3.save_location") + "d-" + splitPath.last
+            val filePath = s3Config.getString("s3.save_location") + "d-" + splitPath.last
             
             amazonS3Client.getObject(new GetObjectRequest(bucket, fileKeyName), new File(filePath))
             

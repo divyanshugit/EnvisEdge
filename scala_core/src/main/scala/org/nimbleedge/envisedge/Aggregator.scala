@@ -35,6 +35,7 @@ object Aggregator {
         extends Aggregator.Command
 
     final case class InitiateSampling(samplingPolicy: String) extends Aggregator.Command
+    private final case class StartAggregation(aggregationPolicy: String) extends Aggregator.Command
 
     final case class CheckS3ForModels() extends Aggregator.Command
 
@@ -63,6 +64,9 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
 
 
     routerRef ! RegisterAggregator(aggId.toString(), context.self)
+
+    val config = ConfigManager.staticConfig
+    val aggDir = s"${aggId.getOrchestrator().toString()}/${aggId.toString()}/"
 
     context.log.info("Aggregator {} started", aggId.toString())
 
@@ -204,9 +208,10 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                         // TODO: Handle the response appropriately
                         parent ! Orchestrator.SamplingCheckpoint(aggId)
 
-                        timers.startSingleTimer(TimerKey, CheckS3ForModels(), ConfigManager.aggregatorS3ProbeIntervalSec.second)
+                        timers.startSingleTimer(TimerKey, CheckS3ForModels(), ConfigManager.aggregatorS3ProbeIntervalMinutes.minutes)
                     case Aggregation_JobResponse(_) =>
                         // TODO: Handle the reponse appropriately
+                        AmazonS3Communicator.emptyDir(AmazonS3Communicator.s3Config.getString("bucket"), aggDir)
                     case _ => throw new IllegalArgumentException(s"Invalid response_type : ${msg}")
                 }
                 this
@@ -214,12 +219,14 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
             case trackMsg @ CheckS3ForModels() =>
                 // Connect to S3, and ask for models
                 context.log.info("Aggregator ID:{} CheckS3ForModels", aggId.toString())
-                val modelsRecived: Boolean = false
+                val bucketName = config.getConfig("s3").getString("bucket")
+                val modelList = AmazonS3Communicator.listAllFiles(bucketName, aggDir)
 
-                if (modelsRecived) {
+                if (modelList.length >= ConfigManager.minClientsForAggregation) {
                     timers.cancel()
+                    context.self ! StartAggregation(ConfigManager.aggregationPolicy)
                 } else {
-                    timers.startSingleTimer(TimerKey, CheckS3ForModels(), 500.milli)
+                    timers.startSingleTimer(TimerKey, CheckS3ForModels(), ConfigManager.aggregatorS3ProbeIntervalMinutes.minutes)
                 }
                 this
             

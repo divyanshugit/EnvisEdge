@@ -11,7 +11,6 @@ import akka.actor.typed.scaladsl.AbstractBehavior
 import akka.actor.typed.Signal
 import akka.actor.typed.PostStop
 import akka.actor.typed.DispatcherSelector
-import com.typesafe.config.Config
 
 object FLSystemManager {
     def apply(): Behavior[Command] =
@@ -82,12 +81,10 @@ class FLSystemManager(context: ActorContext[FLSystemManager.Command]) extends Ab
     // TODO insert host, port from config
     RedisClientHelper.initConnection()
 
-    val config = context.system.settings.config
-
-    KafkaProducer.init(config.getConfig("producer-config"))
+    KafkaProducer.init(ConfigManager.staticConfig.getConfig("producer-config"))
 
     val FLSysKafkaConsumerRef = context.spawn(
-        KafkaConsumer(config.getConfig("consumer-config"), Right(context.self)), "FLSystemManager KafkaConsumer", DispatcherSelector.blocking()
+        KafkaConsumer(ConfigManager.staticConfig.getConfig("consumer-config"), Right(context.self)), "FLSystemManager KafkaConsumer", DispatcherSelector.blocking()
     )
 
     context.log.info("FLSystemManager Started")

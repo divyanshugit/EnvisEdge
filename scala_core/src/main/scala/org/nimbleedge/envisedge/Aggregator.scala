@@ -50,7 +50,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
     import Aggregator._
     import FLSystemManager.{ RequestTrainer, TrainerRegistered, RequestAggregator, AggregatorRegistered, RequestRealTimeGraph, StartCycle, KafkaResponse }
     import LocalRouter.RegisterAggregator
-    import ConfigManager.AGGR_SAMPLING_REQUEST_TOPIC
+    import ConfigManager.{AGGR_SAMPLING_REQUEST_TOPIC,  AGGR_AGGREGATION_REQUEST_TOPIC}
 
 
     // TODO
@@ -65,7 +65,6 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
 
     routerRef ! RegisterAggregator(aggId.toString(), context.self)
 
-    val config = ConfigManager.staticConfig
     val aggDir = s"${aggId.getOrchestrator().toString()}/${aggId.toString()}/"
 
     context.log.info("Aggregator {} started", aggId.toString())
@@ -124,18 +123,35 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
     def makeSamplingJobSubmit(clientList: List[String]) : SamplingJobSubmit = {
         println("In make Sampling message")
         println(trainerIdsToRef)
-        var sampling_message = SamplingJobSubmit(
+        var samplingMessage = SamplingJobSubmit(
             basic_info = JobSubmitBasic(
-                __type__ = "sampling",
-                job_type = "sampling-jobsubmit",
+                __type__ = "sampling-jobsubmit",
+                job_type = "sampling",
                 sender_id = aggId.toString(),
+                // Fix this?
                 receiver_id = aggId.toString()
             ),
-            trainerList = clientList,
-            trainerHistory = MutableMap.empty
+            trainer_list = clientList,
         )
 
-        return sampling_message
+        return samplingMessage
+    }
+
+    def makeAggregationJobSubmit(modelDirs: String) : AggregationJobSubmit = {
+        println("In make Sampling message")
+        println(trainerIdsToRef)
+        var aggregationMessage = AggregationJobSubmit(
+            basic_info = JobSubmitBasic(
+                __type__ = "aggregation-jobsubmit",
+                job_type = "aggregation",
+                sender_id = aggId.toString(),
+                // Fix this?
+                receiver_id = aggId.toString()
+            ),
+            models_dir = modelDirs,
+        )
+
+        return aggregationMessage
     }
 
     override def onMessage(msg: Command): Behavior[Command] =
@@ -185,20 +201,31 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                 }
                 this
 
-            case trackMsg @ InitiateSampling(samplingPolicy) =>
+            case InitiateSampling(samplingPolicy) =>
                 context.log.info("Aggregator Id:{} Initiate Sampling", aggId.toString())
                 // fetch list of clientIds from the Redis
                 val clientList = RedisClientHelper.getList(aggId.toString()).toList.flatten.flatten
 
                 // TODO create the Job and submit to the python service
                 // Make Sampling Job Submit Message here
-                val sampling_message = makeSamplingJobSubmit(clientList)
-                context.log.info("Aggregator Id:{} Sampling Message: {}", aggId.toString(), sampling_message)
+                val samplingMessage = makeSamplingJobSubmit(clientList)
+                context.log.info("Aggregator Id:{} Sampling Message: {}", aggId.toString(), samplingMessage)
                 // Convert Message to Json String to send via kafka
-                val serializedMsg = JsonEncoder.serialize(sampling_message)
+                val serializedMsg = JsonEncoder.serialize(samplingMessage)
                 // TODO Send job to Python Service using Kafka
-                KafkaProducer.send(AGGR_SAMPLING_REQUEST_TOPIC, sampling_message.basic_info.receiver_id, serializedMsg)
+                KafkaProducer.send(AGGR_SAMPLING_REQUEST_TOPIC, samplingMessage.basic_info.receiver_id, serializedMsg)
                 
+                this
+
+            case StartAggregation(aggregationPolicy) =>
+                context.log.info("Aggregator Id:{} Start Aggregation", aggId.toString())
+
+                val aggregationMessage = makeAggregationJobSubmit(aggDir)
+                context.log.info("Aggregator Id:{} Aggregation Message: {}", aggId.toString(), aggregationMessage)
+
+                val serializedMsg = JsonEncoder.serialize(aggregationMessage)
+                // TODO Send job to Python Service using Kafka
+                KafkaProducer.send(AGGR_AGGREGATION_REQUEST_TOPIC, aggregationMessage.basic_info.receiver_id, serializedMsg)
                 this
 
             case KafkaResponse(requestId, message) =>
@@ -219,8 +246,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
             case trackMsg @ CheckS3ForModels() =>
                 // Connect to S3, and ask for models
                 context.log.info("Aggregator ID:{} CheckS3ForModels", aggId.toString())
-                val bucketName = config.getConfig("s3").getString("bucket")
-                val modelList = AmazonS3Communicator.listAllFiles(bucketName, aggDir)
+                val modelList = AmazonS3Communicator.listAllFiles(AmazonS3Communicator.s3Config.getString("bucket"), aggDir)
 
                 if (modelList.length >= ConfigManager.minClientsForAggregation) {
                     timers.cancel()

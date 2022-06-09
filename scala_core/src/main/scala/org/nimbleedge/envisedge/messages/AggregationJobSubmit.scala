@@ -3,7 +3,7 @@ package org.nimbleedge.envisedge.messages
 // job message that scala sends to python for doing different tasks
 // general prototype of job-submit message
 // will change depending on type of job
-case class WorkerState_Model_Data_JobSubmit (
+/*case class WorkerState_Model_Data_JobSubmit (
     class_ref_name : String,
     state_type : String,
     state_data_tensor_path : String
@@ -57,9 +57,9 @@ case class Data_JobSubmit (
     sender_id :  Int,
     receiver_id : Int,
     workerstate : WorkerState_JobSubmit
-)
+)*/
 
-case class JobSubmit (
-    __type__ : String,
-    __data__ : Data_JobSubmit
+case class AggregationJobSubmit (
+    basic_info : JobSubmitBasic,
+    models_dir: String,
 )

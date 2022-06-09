@@ -1,31 +1,37 @@
 package org.nimbleedge.envisedge.messages
 
-// response message that scala gets from python
-// This message contains basic fields of Job Response Message
-
-case class LinearWeightResultJobResponse (
+case class JobResponseMessage (
     __type__ : String,
-    __data__Storage : String
+    __data__ : JobResponseData
 )
 
-case class LinearBiasResultJobResponse (
-    __type__ : String,
-    __data__Storage : String
-)
-
-case class ResultJobResponse (
-    linearWeight : LinearWeightResultJobResponse,
-    linearBias : LinearBiasResultJobResponse
-)
-
-case class DataJobResponse (
+case class JobResponseData (
     job_type : String,
-    results : ResultJobResponse
+    senderid : String,
+    receiverid : String,
+    results : JobResponseResults,
 )
 
-case class JobResponseBasic (
-    __type__ : String,
-    sender_id : String,
-    receiver_id : String,
-    __data__ : DataJobResponse
+case class JobResponseResults (
+    linearWeight : LinearWeight,
+    linearBias : LinearBias
 )
+
+case class LinearWeight (
+    __type__ : String,
+    __data__ : Storage
+)
+
+case class LinearBias (
+    __type__ : String,
+    __data__ : Storage
+)
+
+case class Storage (
+    storage : String,
+)
+
+
+
+
+

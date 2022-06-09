@@ -53,34 +53,37 @@ object JsonDecoder {
           case Left(parsingError) =>
               throw new IllegalArgumentException(s"Invalid json object : ${parsingError.message}")
           case Right(json) =>
+                val response = mapper.readValue(json_string, classOf[JobResponseMessage])
+                println(response)
+                return response
               // Navigate through the fields of json object
-              val cursor: HCursor = json.hcursor
-              val job_type : Decoder.Result[String] = 
-                  cursor.downField("job_type").as[String]
+            //   val cursor: HCursor = json.hcursor
+            //   val job_type : Decoder.Result[String] = 
+            //       cursor.downField("job_type").as[String]
               
-              job_type match {
-                  case Left(decodingFailure) => 
-                      throw new IllegalArgumentException(s"Cant find the field : ${decodingFailure}")
-                  case Right(__type__) =>
-                      if(__type__ == "sampling-response") {
-                          println("In Sampling Response")
-                          val sampling_response = mapper.readValue(json_string, classOf[Sampling_JobResponse])
-                          println(sampling_response)
-                          return sampling_response
-                      }
-                      else if (__type__ == "aggregation-response") {
-                          println("In Aggregation Response")
-                          val aggregation_response = mapper.readValue(json_string, classOf[Aggregation_JobResponse])
-                          println(aggregation_response)
-                          return aggregation_response
-                      } 
-                      // Handle other cases here
-                      // Training Response and Recommendation Response
-                      else {
-                          // If invalid job Type
-                          throw new IllegalArgumentException(s"Invalid job_type : ${__type__}")
-                      }
-              }   
+            //   job_type match {
+            //       case Left(decodingFailure) => 
+            //           throw new IllegalArgumentException(s"Cant find the field : ${decodingFailure}")
+            //       case Right(__type__) =>
+            //           if(__type__ == "sampling-response") {
+            //               println("In Sampling Response")
+            //               val sampling_response = mapper.readValue(json_string, classOf[Sampling_JobResponse])
+            //               println(sampling_response)
+            //               return sampling_response
+            //           }
+            //           else if (__type__ == "aggregation-response") {
+            //               println("In Aggregation Response")
+            //               val aggregation_response = mapper.readValue(json_string, classOf[Aggregation_JobResponse])
+            //               println(aggregation_response)
+            //               return aggregation_response
+            //           } 
+            //           // Handle other cases here
+            //           // Training Response and Recommendation Response
+            //           else {
+            //               // If invalid job Type
+            //               throw new IllegalArgumentException(s"Invalid job_type : ${__type__}")
+            //           }
+            //   }   
       }
   }
 }

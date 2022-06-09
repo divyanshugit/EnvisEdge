@@ -149,7 +149,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
                 job_args = List(),
                 job_kwargs = null,
                 senderid = aggId.toString(),
-                receiverid = aggId.toString(),
+                receiverid = aggId.toString(), // confirm this
                 job_type = "aggregate",
                 workerstate = WorkerState (
                     __type__ = "fedrec.data_models.aggregator_state_model.AggregatorState",
@@ -258,26 +258,31 @@ class Aggregator(context: ActorContext[Aggregator.Command], timers: TimerSchedul
             case StartAggregation(aggregationPolicy) =>
                 context.log.info("Aggregator Id:{} Start Aggregation", aggId.toString())
 
-                /*val aggregationMessage = makeAggregationJobSubmit(aggDir)
+                val aggregationMessage = makeAggregationJobSubmit()
                 context.log.info("Aggregator Id:{} Aggregation Message: {}", aggId.toString(), aggregationMessage)
 
                 val serializedMsg = JsonEncoder.serialize(aggregationMessage)
                 // TODO Send job to Python Service using Kafka
-                KafkaProducer.send(AGGR_AGGREGATION_REQUEST_TOPIC, aggregationMessage.basic_info.receiver_id, serializedMsg)*/
+                KafkaProducer.send(AGGR_AGGREGATION_REQUEST_TOPIC, aggregationMessage.__data__.receiverid, serializedMsg)
                 this
 
             case KafkaResponse(requestId, message) =>
                 val msg = JsonDecoder.deserialize(message)
                 msg match {
-                    case Sampling_JobResponse(_) => 
-                        // TODO: Handle the response appropriately
-                        parent ! Orchestrator.SamplingCheckpoint(aggId)
+                    case  resp @ JobResponseMessage(_,_) => 
+                        resp.__data__.job_type match {
+                            case "sampling" =>
+                                // TODO: Handle the response appropriately
+                                parent ! Orchestrator.SamplingCheckpoint(aggId)
 
-                        timers.startSingleTimer(TimerKey, CheckS3ForModels(), ConfigManager.aggregatorS3ProbeIntervalMinutes.minutes)
-                    case Aggregation_JobResponse(_) =>
-                        // TODO: Handle the reponse appropriately
-                        AmazonS3Communicator.emptyDir(AmazonS3Communicator.s3Config.getString("bucket"), aggDir)
-                        round_index += 1
+                                timers.startSingleTimer(TimerKey, CheckS3ForModels(), ConfigManager.aggregatorS3ProbeIntervalMinutes.minutes)
+                            case "aggregate" => 
+                                // TODO: Handle the reponse appropriately
+                                AmazonS3Communicator.emptyDir(AmazonS3Communicator.s3Config.getString("bucket"), aggDir)
+                                round_index += 1
+                            case _ => throw new IllegalArgumentException(s"Invalid response_type : ${msg}")
+                        }
+                        
                     case _ => throw new IllegalArgumentException(s"Invalid response_type : ${msg}")
                 }
                 this

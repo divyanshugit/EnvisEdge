@@ -192,8 +192,8 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
         context.log.info("Orc id:{} Aggregation Checkpoint for Agg:{}", orcId.name(), aggId.name())
         aggIdAggregationCompletedSet += aggId
         if (aggIdAggregationCompletedSet.size == orcId.getChildren().size) {
-          context.log.info("Orc id:{} Sampling Checkpoint Finished for all Aggs, sending next checkpoint to FLSystemManager", orcId.name())
-          parent ! FLSystemManager.SamplingCheckpoint(orcId)
+          context.log.info("Orc id:{} Aggregation Checkpoint Finished for all Aggs, sending next checkpoint to FLSystemManager", orcId.name())
+          parent ! FLSystemManager.AggregationCheckpoint(orcId)
         }
         // reset all sturctures
         reset()

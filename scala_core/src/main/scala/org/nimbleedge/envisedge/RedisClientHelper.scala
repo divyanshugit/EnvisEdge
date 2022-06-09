@@ -42,6 +42,10 @@ object RedisClientHelper {
         client.hmget[String, String](hash, fields: _*)
     }
 
+    def hset(hash: String, field: String, value: String) = {
+        client.hset(hash,field,value)
+    }
+
     def flushdb() = {
         client.flushdb
     }

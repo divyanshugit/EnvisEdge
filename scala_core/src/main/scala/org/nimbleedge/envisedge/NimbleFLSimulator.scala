@@ -4,6 +4,6 @@ import akka.actor.typed.ActorSystem
 
 object NimbleFLSimulator {
 	def main(args: Array[String]): Unit = {
-		ActorSystem[Nothing](SimulatorSupervisor(), "nimble-fl-simulator")
+		ActorSystem[SimulatorSupervisor.Command](SimulatorSupervisor(), "nimble-fl-simulator")
 	}
 }

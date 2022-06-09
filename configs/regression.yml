@@ -65,3 +65,9 @@ random:
 
 log_dir:
   PATH: <"Path to logging directory">
+
+s3:
+  aws_access_key: ''
+  aws_secret_access_key: ''
+  region: ''
+  buckets: ['bucket1', 'bucket2']

@@ -95,7 +95,6 @@ class S3Interface(AbstractDatabaseManager):
         #Extract Group of device and model we need to fetch
         
         filePath = self.storage + file_key
-        print("In download: ", filePath)
         
         self.bucket.download_file(
             Key=file_key, Filename=filePath
@@ -105,7 +104,7 @@ class S3Interface(AbstractDatabaseManager):
 
 
 
-    def upload(self, bucket_name: str, file_path: str, file_key: str):
+    def upload(self, file_path: str, file_key: str):
         if self.current_buckets == None:
             raise Exception("Error connecting to database.")
         
@@ -115,11 +114,11 @@ class S3Interface(AbstractDatabaseManager):
 
 
   
-    def update(self, bucket_name:str, file_path:str, file_key:str):
+    def update(self,file_path:str, file_key:str):
         if self.current_buckets == None:
             raise Exception("Error connecting to database.")
 
-        self.upload(bucket_name, file_path, file_key)
+        self.upload(file_path, file_key)
 
 
     def delete(self, file_key: str):
@@ -156,17 +155,19 @@ class S3Interface(AbstractDatabaseManager):
                 raise
 
 
-
     def create_empty_dir(self, dir_name: str) :
 
         if self.bucket == None:
             raise Exception("Error connecting to datbase.")
         
-        self.bucket.upload_file(Filename='/home/harshit/Testing/test.txt', Key='server/')
+        self.bucket.upload_file(Filename='/path/to/any/file', Key=dir_name)
 
 
     def empty_dir(self, dir_name: str):
 
+        if self.bucket == None:
+            raise Exception("Error connecting to database.")
+        
         keys = self.list_all_files(dir_name)
         for key in keys:
             self.delete(dir_name + key)

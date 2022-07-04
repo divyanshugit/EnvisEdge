@@ -1,5 +1,5 @@
 from typing import Callable, Optional, Tuple, Iterable
-
+import functools
 import torch
 import attr
 
@@ -95,4 +95,18 @@ def create_optimizer_vars(
     grads_and_vars = map_structure(lambda x,v: (-1.0 * x, v), torch.flatten(delta))
     optimizer.apply_gradients(grads_and_vars, name="server_update")
     return optimizer.variables()
+
+
+def zero_all_if_any_non_finite(structure):
     
+    flat =  torch.flatten(structure) 
+    if not flat:
+        return (structure, torch.tensor(0)) 
+  
+    flat_bools = [False if torch.isfinite(t) else True for t in flat]
+    all_finite = functools.reduce(torch.logical_and, flat_bools)
+    if all_finite:
+        return (structure, torch.tensor(0))
+    else:
+        return(map_structure(lambda x: torch.zeros_like(x), structure),
+                torch.tensor(1))

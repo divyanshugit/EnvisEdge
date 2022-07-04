@@ -10,6 +10,7 @@ and sent to new clients at beginning of next round.
 # Federated Reconstruction Process
 import logging
 from typing import Dict
+from grpc import server
 
 import torch
 # from fedrec.user_modules.envis_base_module import EnvisBase
@@ -126,3 +127,4 @@ class ClientUpdate():
 class Reconstruct():
     def __init__():
         pass
+
